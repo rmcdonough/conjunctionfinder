@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  Astrology Conjunction Finder API - the same FastAPI app that runs locally
+  under uvicorn, wrapped by Mangum and served through API Gateway.
+  SCAFFOLDING ONLY: this template has never been deployed or validated against
+  CloudFormation. Treat it as a starting point, not a finished stack.
+
+Parameters:
+  AllowedOrigins:
+    Type: String
+    Default: http://localhost:5173
+    Description: >
+      Comma-separated CORS origins the API accepts. Set this to the deployed
+      frontend origin (e.g. https://charts.example.com).
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+    Description: CloudWatch Logs retention for the function log group.
+
+Globals:
+  Function:
+    Runtime: python3.11
+    MemorySize: 1024
+    # Cold start loads the .se1 ephemeris files and the timezonefinder dataset;
+    # a 12-month two-body search itself runs in well under a second.
+    Timeout: 30
+    Architectures:
+      - x86_64
+    Tracing: Active
+
+Resources:
+  ConjunctionApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: prod
+      # The FastAPI app sets its own CORS headers via CORSMiddleware, so CORS is
+      # deliberately not configured here as well - two sources of Access-Control
+      # headers would conflict.
+
+  ConjunctionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: FastAPI conjunction finder behind Mangum
+      CodeUri: .
+      # app/main.py exports `handler = Mangum(app, lifespan="off")`.
+      Handler: app.main.handler
+      Environment:
+        Variables:
+          ALLOWED_ORIGINS: !Ref AllowedOrigins
+          # Swiss Ephemeris .se1 files are bundled from backend/ephe/ into the
+          # deployment package, which Lambda unpacks under /var/task.
+          EPHE_PATH: /var/task/ephe
+          GEOCODER_USER_AGENT: astrology-conjunction-finder/1.0
+      Events:
+        AnyRequest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ConjunctionApi
+            Path: /{proxy+}
+            Method: ANY
+    Metadata:
+      BuildMethod: python3.11
+
+  ConjunctionFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ConjunctionFunction}
+      RetentionInDays: !Ref LogRetentionDays
+
+Outputs:
+  ApiBaseUrl:
+    Description: Base URL to put in the frontend's VITE_API_BASE_URL
+    Value: !Sub https://${ConjunctionApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+  FunctionName:
+    Description: Lambda function name
+    Value: !Ref ConjunctionFunction

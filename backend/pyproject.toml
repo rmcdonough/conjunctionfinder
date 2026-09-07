@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "network: hits a real network service (Nominatim geocoding); only runs when RUN_NETWORK_TESTS=1",
+]
