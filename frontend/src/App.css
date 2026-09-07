@@ -1,0 +1,335 @@
+.page {
+  /* Wide enough that the six-column events table fits without horizontal
+     scrolling on a 1280px viewport; narrower screens still scroll it. */
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+/* ── Masthead ─────────────────────────────────────────────────────────── */
+
+.masthead {
+  margin-bottom: 2rem;
+}
+
+.masthead h1 {
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  letter-spacing: -0.01em;
+}
+
+.masthead p {
+  color: var(--text-muted);
+  max-width: 60ch;
+  margin: 0;
+}
+
+.glyph {
+  color: var(--accent);
+}
+
+/* ── Cards ────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.card h2 {
+  font-size: 1.15rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.for-name {
+  font-size: 1.35rem;
+  margin: 2rem 0 1rem;
+}
+
+.count {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  white-space: nowrap;
+}
+
+/* ── Form ─────────────────────────────────────────────────────────────── */
+
+.form fieldset {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0 0 1.25rem;
+  padding: 1.25rem 0 0;
+}
+
+.form fieldset:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.form legend {
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0;
+  margin-bottom: 0.9rem;
+}
+
+.field {
+  margin-bottom: 1rem;
+}
+
+.field:last-child {
+  margin-bottom: 0;
+}
+
+.field label,
+.label-like,
+.month-year-legend {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 0.3rem;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0.35rem 0 0;
+  max-width: 65ch;
+}
+
+.hint-warn {
+  color: var(--warn);
+}
+
+.checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.9rem;
+  font-weight: 400;
+  margin-bottom: 0.4rem;
+  cursor: pointer;
+}
+
+.checkbox input {
+  margin-top: 0.3rem;
+  flex: none;
+}
+
+.month-year-inputs {
+  display: grid;
+  grid-template-columns: 1fr 6.5rem;
+  gap: 0.5rem;
+}
+
+.advanced {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  background: var(--bg-inset);
+}
+
+.disclosure {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.87rem;
+  cursor: pointer;
+}
+
+.advanced-body {
+  margin-top: 0.9rem;
+}
+
+.advanced-body .field-row {
+  margin-bottom: 0;
+}
+
+.submit {
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dim) 100%);
+  color: #12101c;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  padding: 0.7rem 1.4rem;
+  cursor: pointer;
+}
+
+.submit:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+
+/* ── Status ───────────────────────────────────────────────────────────── */
+
+.error,
+.error-card p {
+  color: var(--error);
+  margin: 0;
+}
+
+.error-card {
+  border-color: #6b3a35;
+}
+
+.error-card h2 {
+  color: var(--error);
+}
+
+.loading {
+  color: var(--text-muted);
+}
+
+.empty {
+  color: var(--warn);
+  margin: 0;
+}
+
+/* ── Resolved-location summary ────────────────────────────────────────── */
+
+.resolved {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.9rem 1.5rem;
+  margin: 1.25rem 0;
+  padding: 1rem;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.resolved dt {
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.resolved dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.92rem;
+}
+
+/* ── Tables ───────────────────────────────────────────────────────────── */
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-inset);
+  text-align: left;
+  font-size: 0.73rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 0.6rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+tbody th,
+tbody td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border-strong);
+  text-align: left;
+  font-weight: 400;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+tbody th {
+  font-weight: 500;
+}
+
+tbody tr:hover td,
+tbody tr:hover th {
+  background: #1b2130;
+}
+
+tr.month-heading th {
+  background: #1a2030;
+  color: var(--accent);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.75rem;
+  display: table-cell;
+}
+
+tr.month-heading:hover th {
+  background: #1a2030;
+}
+
+tr.month-heading .count {
+  margin-left: 0.7rem;
+}
+
+tr.row-house th,
+tr.row-house td {
+  color: #b9c2d4;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.83rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.numeric {
+  text-align: right;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.retro {
+  color: var(--retro);
+  font-size: 1rem;
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
+
+footer {
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+footer p {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  margin: 0;
+  max-width: 70ch;
+}
