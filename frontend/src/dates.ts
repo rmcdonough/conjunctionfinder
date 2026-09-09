@@ -75,3 +75,41 @@ export function isoOffsetLabel(iso: string, { short = false } = {}): string {
   if (!match) return ''
   return short ? match[1] : `UTC${match[1]}`
 }
+
+/**
+ * Format a UTC instant in the BROWSER's own local timezone, with an
+ * abbreviation (e.g. "EDT", "GMT+2", "JST") appended.
+ *
+ * Unlike `formatIsoInOwnZone` (which trusts the offset already embedded in
+ * the string — used for the birth-location and UTC columns, which must NOT
+ * shift), this one deliberately lets the `Date` object reinterpret the
+ * instant in whatever zone the visitor's device is set to. `event.utc` is
+ * always a real UTC instant (suffixed `Z` or `+00:00`), so this is safe.
+ *
+ * The abbreviation comes from `Intl.DateTimeFormat`'s `timeZoneName: 'short'`
+ * part — the browser/OS's own tz database, so it already accounts for DST on
+ * the event's date rather than "now".
+ */
+export function formatBrowserLocal(utcIso: string): { stamp: string; tzAbbr: string } {
+  const date = new Date(utcIso)
+  if (Number.isNaN(date.getTime())) return { stamp: utcIso, tzAbbr: '' }
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+    timeZoneName: 'short',
+  }).formatToParts(date)
+
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? ''
+
+  const stamp = `${get('weekday')} ${get('day')} ${get('month')} ${get('year')}, ${get('hour')}:${get('minute')}:${get('second')}`
+  const tzAbbr = get('timeZoneName')
+  return { stamp, tzAbbr }
+}
