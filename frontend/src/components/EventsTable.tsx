@@ -1,4 +1,5 @@
 import { browserMonthLabel, browserOffsetLabel, formatBrowserLocal, isoMonthLabel } from '../dates'
+import { buildConjunctionIcsDataUri, icsFileName } from '../ics'
 import type { ConjunctionEvent, ConjunctionsResponse } from '../types'
 
 const BODY_GLYPH: Record<ConjunctionEvent['transiting_body'], string> = {
@@ -79,12 +80,13 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
               <th scope="col">Transiting</th>
               <th scope="col">Natal point</th>
               <th scope="col">Natal position</th>
+              <th scope="col">Calendar invite</th>
             </tr>
           </thead>
           {groups.map((group) => (
             <tbody key={group.month}>
               <tr className="month-heading">
-                <th scope="colgroup" colSpan={4}>
+                <th scope="colgroup" colSpan={5}>
                   {group.month}
                   <span className="count">
                     {group.events.length} event
@@ -108,6 +110,14 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
                   </td>
                   <th scope="row">{event.natal_key}</th>
                   <td className="mono">{event.natal_label}</td>
+                  <td>
+                    <a
+                      href={buildConjunctionIcsDataUri(event)}
+                      download={icsFileName(event)}
+                    >
+                      Link
+                    </a>
+                  </td>
                 </tr>
               ))}
             </tbody>
