@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   MONTH_NAMES,
   addMonths,
@@ -18,6 +18,85 @@ export interface BirthFormProps {
 
 const YEAR_MIN = 1800
 const YEAR_MAX = 2399
+
+/**
+ * Everything the form's initial state can be seeded from via URL query
+ * params, so a link with these params attached opens pre-filled — e.g. for
+ * bookmarking or sharing a specific chart/search without retyping it.
+ *
+ * Read once at mount (see the `useMemo(..., [])` below); editing the form
+ * afterwards does not rewrite the URL, and reloading with the same URL
+ * reproduces the same pre-filled state.
+ */
+interface UrlSeed {
+  name?: string
+  birthDate?: string
+  birthTime?: string
+  birthPlace?: string
+  latitude?: string
+  longitude?: string
+  start?: MonthYear
+  end?: MonthYear
+  bodies?: TransitingBody[]
+}
+
+function readUrlSeed(): UrlSeed {
+  if (typeof window === 'undefined') return {}
+  const params = new URLSearchParams(window.location.search)
+  const seed: UrlSeed = {}
+
+  const name = params.get('name')
+  if (name) seed.name = name
+
+  const birthDate = params.get('birth_date')
+  if (birthDate) seed.birthDate = birthDate
+
+  const birthTime = params.get('birth_time')
+  if (birthTime) seed.birthTime = birthTime
+
+  const birthPlace = params.get('birth_place')
+  if (birthPlace) seed.birthPlace = birthPlace
+
+  // Both coordinates are required together — a lone lat or lon is ignored
+  // rather than half-applied, since the manual-override checkbox needs both.
+  const latitude = params.get('latitude')
+  const longitude = params.get('longitude')
+  if (latitude && longitude) {
+    seed.latitude = latitude
+    seed.longitude = longitude
+  }
+
+  // Same rule for the search window: only override the "this month to next
+  // month" default when a complete start AND end are both given.
+  const startYear = Number(params.get('start_year'))
+  const startMonth = Number(params.get('start_month'))
+  const endYear = Number(params.get('end_year'))
+  const endMonth = Number(params.get('end_month'))
+  if (
+    Number.isInteger(startYear) &&
+    Number.isInteger(startMonth) &&
+    Number.isInteger(endYear) &&
+    Number.isInteger(endMonth) &&
+    params.has('start_year') &&
+    params.has('start_month') &&
+    params.has('end_year') &&
+    params.has('end_month')
+  ) {
+    seed.start = { year: startYear, month: startMonth }
+    seed.end = { year: endYear, month: endMonth }
+  }
+
+  const bodiesParam = params.get('bodies')
+  if (bodiesParam) {
+    const parsed = bodiesParam
+      .split(',')
+      .map((b) => b.trim().toLowerCase())
+      .filter((b): b is TransitingBody => b === 'moon' || b === 'sun')
+    if (parsed.length) seed.bodies = parsed
+  }
+
+  return seed
+}
 
 function MonthYearPicker({
   legend,
@@ -63,23 +142,27 @@ function MonthYearPicker({
 
 export function BirthForm({ loading, onSubmit }: BirthFormProps) {
   const thisMonth = currentMonthYear()
+  // Parsed once per mount — the URL is the source of truth only for the
+  // initial render; typing in the form afterwards doesn't fight the user by
+  // re-reading it.
+  const seed = useMemo(() => readUrlSeed(), [])
 
-  const [name, setName] = useState('')
-  const [birthDate, setBirthDate] = useState('')
-  const [birthTime, setBirthTime] = useState('12:00')
-  const [birthPlace, setBirthPlace] = useState('')
+  const [name, setName] = useState(seed.name ?? '')
+  const [birthDate, setBirthDate] = useState(seed.birthDate ?? '')
+  const [birthTime, setBirthTime] = useState(seed.birthTime ?? '12:00')
+  const [birthPlace, setBirthPlace] = useState(seed.birthPlace ?? '')
 
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  const [useManualCoords, setUseManualCoords] = useState(false)
-  const [latitude, setLatitude] = useState('')
-  const [longitude, setLongitude] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(Boolean(seed.latitude))
+  const [useManualCoords, setUseManualCoords] = useState(Boolean(seed.latitude))
+  const [latitude, setLatitude] = useState(seed.latitude ?? '')
+  const [longitude, setLongitude] = useState(seed.longitude ?? '')
 
-  const [start, setStart] = useState<MonthYear>(thisMonth)
-  const [end, setEnd] = useState<MonthYear>(addMonths(thisMonth, 1))
+  const [start, setStart] = useState<MonthYear>(seed.start ?? thisMonth)
+  const [end, setEnd] = useState<MonthYear>(seed.end ?? addMonths(thisMonth, 1))
 
   const [bodies, setBodies] = useState<Record<TransitingBody, boolean>>({
-    moon: true,
-    sun: false,
+    moon: seed.bodies ? seed.bodies.includes('moon') : true,
+    sun: seed.bodies ? seed.bodies.includes('sun') : false,
   })
 
   const [validationError, setValidationError] = useState<string | null>(null)

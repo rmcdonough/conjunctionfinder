@@ -81,6 +81,25 @@ exact decimal degrees. The place-name text is still sent, but the backend then
 uses it only as a display label. The timezone is always derived from the
 coordinates.
 
+**Shareable/bookmarkable URLs.** Every field can be pre-filled via query
+string, so a link opens the form already populated (search still requires
+pressing "Find conjunctions" — nothing fires automatically on load). Params
+are read once at mount; editing the form afterwards does not rewrite the URL.
+
+| Param | Maps to | Notes |
+| --- | --- | --- |
+| `name` | Name | |
+| `birth_date` | Birth date | `YYYY-MM-DD` |
+| `birth_time` | Birth time | `HH:MM`, 24h |
+| `birth_place` | Birth place | URL-encode spaces/commas |
+| `latitude`, `longitude` | Advanced: exact coordinates | Only applied if **both** are present; auto-expands the advanced section and checks "use these coordinates" |
+| `start_year`, `start_month`, `end_year`, `end_month` | Search window | Only applied if **all four** are present; otherwise the current-month → next-month default is kept, per the app's usual behaviour |
+| `bodies` | Transiting bodies | Comma-separated, e.g. `bodies=moon,sun` or `bodies=sun`; unrecognised values are dropped |
+
+Any field left out of the URL keeps its normal default (today's date range,
+Moon checked/Sun unchecked, etc.) — there's no requirement to specify every
+param.
+
 **Month grouping.** Events are grouped under a heading for their *local* month,
 matching the first column. Because the search window is whole calendar months in
 UTC, an event in the last hours of the window can appear under the next month
