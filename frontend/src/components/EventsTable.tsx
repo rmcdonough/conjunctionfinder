@@ -1,4 +1,4 @@
-import { formatIsoInOwnZone, isoMonthLabel, isoOffsetLabel } from '../dates'
+import { browserMonthLabel, browserOffsetLabel, formatBrowserLocal, isoMonthLabel } from '../dates'
 import type { ConjunctionEvent, ConjunctionsResponse } from '../types'
 
 const BODY_GLYPH: Record<ConjunctionEvent['transiting_body'], string> = {
@@ -12,19 +12,18 @@ const BODY_NAME: Record<ConjunctionEvent['transiting_body'], string> = {
 }
 
 /**
- * Group events under a month heading, keyed by their LOCAL month.
- *
- * Events arrive sorted, and grouping by local month keeps the headings
- * consistent with the local timestamp in the first column. A conjunction late
- * on the last day of a month in UTC can therefore appear under the previous
- * month — that is genuinely when it happened where you were born.
+ * Group events under a month heading, keyed by their month in the BROWSER's
+ * own local timezone (matching the sole timestamp column shown per row). A
+ * conjunction near a month boundary can therefore land under a different
+ * month than it would in UTC or the birth location's timezone — that is
+ * genuinely when it happened for whoever is looking at the screen.
  */
 function groupByLocalMonth(
   events: ConjunctionEvent[],
 ): { month: string; events: ConjunctionEvent[] }[] {
   const groups: { month: string; events: ConjunctionEvent[] }[] = []
   for (const event of events) {
-    const month = isoMonthLabel(event.local)
+    const month = browserMonthLabel(event.utc)
     const last = groups[groups.length - 1]
     if (last && last.month === month) last.events.push(event)
     else groups.push({ month, events: [event] })
@@ -37,7 +36,7 @@ function formatRange(startIso: string, endIso: string): string {
 }
 
 export function EventsTable({ result }: { result: ConjunctionsResponse }) {
-  const { events, natal_chart: chart, bodies } = result
+  const { events, bodies } = result
   const bodyNames = bodies.map((b) => BODY_NAME[b]).join(' and ')
   const groups = groupByLocalMonth(events)
 
@@ -68,16 +67,15 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
       </h2>
       <p className="hint">
         Transiting {bodyNames} over natal points,{' '}
-        {formatRange(result.range_start, result.range_end)}. Local times are in{' '}
-        {chart.timezone}, the birth location&rsquo;s timezone.
+        {formatRange(result.range_start, result.range_end)}. Times are shown
+        in your browser&rsquo;s own local timezone.
       </p>
 
       <div className="table-scroll">
         <table>
           <thead>
             <tr>
-              <th scope="col">Local ({chart.timezone})</th>
-              <th scope="col">UTC</th>
+              <th scope="col">Local time</th>
               <th scope="col">Transiting</th>
               <th scope="col">Natal point</th>
               <th scope="col">Natal position</th>
@@ -87,7 +85,7 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
           {groups.map((group) => (
             <tbody key={group.month}>
               <tr className="month-heading">
-                <th scope="colgroup" colSpan={6}>
+                <th scope="colgroup" colSpan={5}>
                   {group.month}
                   <span className="count">
                     {group.events.length} event
@@ -98,13 +96,10 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
               {group.events.map((event) => (
                 <tr key={`${event.transiting_body}-${event.natal_key}-${event.utc}`}>
                   <td className="mono">
-                    {formatIsoInOwnZone(event.local)}{' '}
+                    {formatBrowserLocal(event.utc)}{' '}
                     <span className="muted">
-                      {isoOffsetLabel(event.local, { short: true })}
+                      {browserOffsetLabel(event.utc, { short: true })}
                     </span>
-                  </td>
-                  <td className="mono muted">
-                    {formatIsoInOwnZone(event.utc, { weekday: false })}
                   </td>
                   <td>
                     <span className="glyph" aria-hidden="true">

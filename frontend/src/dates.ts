@@ -75,3 +75,52 @@ export function isoOffsetLabel(iso: string, { short = false } = {}): string {
   if (!match) return ''
   return short ? match[1] : `UTC${match[1]}`
 }
+
+/**
+ * Format a real UTC instant in the BROWSER's own local timezone.
+ *
+ * Unlike `formatIsoInOwnZone` (which trusts the offset already embedded in
+ * the string and must NOT be reinterpreted — used when we want the birth
+ * location's wall-clock time regardless of who's viewing), this one
+ * deliberately lets `Date`'s local getters (`getHours`, `getDate`, ...)
+ * apply whatever timezone the visitor's device is set to. `event.utc` is
+ * always a genuine UTC instant (suffixed `Z` or `+00:00`), so reinterpreting
+ * it this way is safe and correct.
+ */
+export function formatBrowserLocal(
+  utcIso: string,
+  { weekday = true }: { weekday?: boolean } = {},
+): string {
+  const date = new Date(utcIso)
+  if (Number.isNaN(date.getTime())) return utcIso
+  const day = String(date.getDate()).padStart(2, '0')
+  const monthName = MONTH_NAMES[date.getMonth()].slice(0, 3)
+  const year = date.getFullYear()
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  const second = String(date.getSeconds()).padStart(2, '0')
+  const stamp = `${day} ${monthName} ${year}, ${hour}:${minute}:${second}`
+  if (!weekday) return stamp
+  const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
+  return `${dayName} ${stamp}`
+}
+
+/** UTC offset of the BROWSER's own timezone for a given instant, e.g. "-04:00". */
+export function browserOffsetLabel(utcIso: string, { short = false } = {}): string {
+  const date = new Date(utcIso)
+  if (Number.isNaN(date.getTime())) return ''
+  const totalMinutes = -date.getTimezoneOffset()
+  const sign = totalMinutes >= 0 ? '+' : '-'
+  const abs = Math.abs(totalMinutes)
+  const hh = String(Math.floor(abs / 60)).padStart(2, '0')
+  const mm = String(abs % 60).padStart(2, '0')
+  const offset = `${sign}${hh}:${mm}`
+  return short ? offset : `UTC${offset}`
+}
+
+/** "June 2026" heading for the month a UTC instant falls in, in the BROWSER's own timezone. */
+export function browserMonthLabel(utcIso: string): string {
+  const date = new Date(utcIso)
+  if (Number.isNaN(date.getTime())) return utcIso
+  return `${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`
+}
