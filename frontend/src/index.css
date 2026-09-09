@@ -34,8 +34,9 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(1100px 500px at 15% -10%, #1d2233 0%, transparent 60%),
-    var(--bg);
+    radial-gradient(1100px 500px at 15% -10%, #1d223399 0%, transparent 60%),
+    linear-gradient(180deg, #0d1017cc 0%, #0d1017e6 100%),
+    url('/background.jpg') center center / cover no-repeat fixed;
 }
 
 h1,
