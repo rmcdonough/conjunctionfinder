@@ -1,4 +1,4 @@
-import { formatBrowserLocal, formatIsoInOwnZone, isoMonthLabel, isoOffsetLabel } from '../dates'
+import { formatIsoInOwnZone, isoMonthLabel, isoOffsetLabel } from '../dates'
 import type { ConjunctionEvent, ConjunctionsResponse } from '../types'
 
 const BODY_GLYPH: Record<ConjunctionEvent['transiting_body'], string> = {
@@ -68,9 +68,8 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
       </h2>
       <p className="hint">
         Transiting {bodyNames} over natal points,{' '}
-        {formatRange(result.range_start, result.range_end)}. The first column
-        is local time at the birth location ({chart.timezone}); the second is
-        converted to this browser&rsquo;s own local timezone.
+        {formatRange(result.range_start, result.range_end)}. Local times are in{' '}
+        {chart.timezone}, the birth location&rsquo;s timezone.
       </p>
 
       <div className="table-scroll">
@@ -78,7 +77,6 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
           <thead>
             <tr>
               <th scope="col">Local ({chart.timezone})</th>
-              <th scope="col">Your local time</th>
               <th scope="col">UTC</th>
               <th scope="col">Transiting</th>
               <th scope="col">Natal point</th>
@@ -89,7 +87,7 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
           {groups.map((group) => (
             <tbody key={group.month}>
               <tr className="month-heading">
-                <th scope="colgroup" colSpan={7}>
+                <th scope="colgroup" colSpan={6}>
                   {group.month}
                   <span className="count">
                     {group.events.length} event
@@ -104,16 +102,6 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
                     <span className="muted">
                       {isoOffsetLabel(event.local, { short: true })}
                     </span>
-                  </td>
-                  <td className="mono">
-                    {(() => {
-                      const { stamp, tzAbbr } = formatBrowserLocal(event.utc)
-                      return (
-                        <>
-                          {stamp} <span className="muted">{tzAbbr}</span>
-                        </>
-                      )
-                    })()}
                   </td>
                   <td className="mono muted">
                     {formatIsoInOwnZone(event.utc, { weekday: false })}
