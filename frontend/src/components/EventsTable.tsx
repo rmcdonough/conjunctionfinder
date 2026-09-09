@@ -79,13 +79,12 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
               <th scope="col">Transiting</th>
               <th scope="col">Natal point</th>
               <th scope="col">Natal position</th>
-              <th scope="col">Verified</th>
             </tr>
           </thead>
           {groups.map((group) => (
             <tbody key={group.month}>
               <tr className="month-heading">
-                <th scope="colgroup" colSpan={5}>
+                <th scope="colgroup" colSpan={4}>
                   {group.month}
                   <span className="count">
                     {group.events.length} event
@@ -109,18 +108,12 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
                   </td>
                   <th scope="row">{event.natal_key}</th>
                   <td className="mono">{event.natal_label}</td>
-                  <td className="mono muted">{event.transiting_label}</td>
                 </tr>
               ))}
             </tbody>
           ))}
         </table>
       </div>
-      <p className="hint">
-        Every crossing is re-checked by recomputing the transiting body&rsquo;s
-        longitude at that exact instant. The &ldquo;verified&rdquo; column is
-        that recomputed value, so it should match the natal position beside it.
-      </p>
     </section>
   )
 }
