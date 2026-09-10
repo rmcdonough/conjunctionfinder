@@ -10,7 +10,17 @@ const CATEGORY_LABEL: Record<NatalPointCategory, string> = {
 }
 
 /** A read-only URL field with a one-click copy button. */
-function ShareLinkField({ url }: { url: string }) {
+function ShareLinkField({
+  label,
+  url,
+  hint,
+  ariaLabel,
+}: {
+  label: string
+  url: string
+  hint: string
+  ariaLabel: string
+}) {
   const [copied, setCopied] = useState(false)
 
   async function handleCopy() {
@@ -26,23 +36,20 @@ function ShareLinkField({ url }: { url: string }) {
 
   return (
     <div className="share-link">
-      <span className="share-link-label">Shareable link</span>
+      <span className="share-link-label">{label}</span>
       <div className="share-link-row">
         <input
           type="text"
           readOnly
           value={url}
           onFocus={(e) => e.currentTarget.select()}
-          aria-label="Shareable link for this search"
+          aria-label={ariaLabel}
         />
         <button type="button" onClick={handleCopy}>
           {copied ? 'Copied!' : 'Copy'}
         </button>
       </div>
-      <p className="hint">
-        Pre-fills the form with this birth data and search window — save it or
-        send it to reproduce this exact search.
-      </p>
+      <p className="hint">{hint}</p>
     </div>
   )
 }
@@ -50,9 +57,11 @@ function ShareLinkField({ url }: { url: string }) {
 export function NatalChartTable({
   chart,
   shareUrl,
+  icsFeedUrl,
 }: {
   chart: NatalChart
   shareUrl: string
+  icsFeedUrl: string
 }) {
   return (
     <section className="card">
@@ -63,9 +72,24 @@ export function NatalChartTable({
       </p>
 
       <dl className="resolved">
-        {shareUrl && (
+        {(shareUrl || icsFeedUrl) && (
           <div className="resolved-share">
-            <ShareLinkField url={shareUrl} />
+            {shareUrl && (
+              <ShareLinkField
+                label="Shareable link"
+                url={shareUrl}
+                ariaLabel="Shareable link for this search"
+                hint="Pre-fills the form with this birth data and search window — save it or send it to reproduce this exact search."
+              />
+            )}
+            {icsFeedUrl && (
+              <ShareLinkField
+                label="Calendar subscription (.ics)"
+                url={icsFeedUrl}
+                ariaLabel="Public calendar subscription URL for these conjunctions"
+                hint="Paste into Google Calendar, Outlook, or Apple Calendar's “subscribe by URL” field. Publicly accessible to anyone with this link — always covers 1 month back to 6 months ahead of today, updating automatically each time your calendar app refreshes it."
+              />
+            )}
           </div>
         )}
         <div>

@@ -186,3 +186,73 @@ def test_geocoding_a_known_city():
     assert body["longitude"] == pytest.approx(-79.38, abs=0.2)
     assert body["timezone"] == "America/Toronto"
     assert "Toronto" in body["resolved_place"]
+
+
+# ── /api/conjunctions.ics ────────────────────────────────────────────────
+
+ICS_PARAMS = {
+    "birth_date": "1971-03-15",
+    "birth_time": "04:30",
+    "latitude": 43.6532,
+    "longitude": -79.3832,
+}
+
+
+def test_ics_feed_returns_valid_calendar():
+    r = client.get("/api/conjunctions.ics", params=ICS_PARAMS)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/calendar")
+    assert 'filename="conjunctions.ics"' in r.headers["content-disposition"]
+    text = r.text
+    assert text.startswith("BEGIN:VCALENDAR\r\n")
+    assert text.rstrip("\r\n").endswith("END:VCALENDAR")
+    assert "BEGIN:VEVENT" in text  # Moon alone guarantees at least one hit
+
+
+def test_ics_feed_defaults_to_both_bodies():
+    r = client.get("/api/conjunctions.ics", params=ICS_PARAMS)
+    assert r.status_code == 200, r.text
+    assert "conjunct Natal Moon" in r.text
+    assert "conjunct Natal Sun" in r.text
+
+
+def test_ics_feed_honours_body_selection():
+    r = client.get(
+        "/api/conjunctions.ics",
+        params={**ICS_PARAMS, "bodies": ["sun"]},
+    )
+    assert r.status_code == 200, r.text
+    assert "conjunct Natal Sun" in r.text
+    assert "conjunct Natal Moon" not in r.text
+
+
+def test_ics_feed_uses_display_name_in_calendar_name():
+    r = client.get("/api/conjunctions.ics", params={**ICS_PARAMS, "name": "Rich"})
+    assert r.status_code == 200, r.text
+    assert "X-WR-CALNAME:Rich: Conjunctions" in r.text
+
+
+def test_ics_feed_missing_birth_date_is_422():
+    params = {k: v for k, v in ICS_PARAMS.items() if k != "birth_date"}
+    r = client.get("/api/conjunctions.ics", params=params)
+    assert r.status_code == 422
+
+
+def test_ics_feed_missing_place_and_coords_is_422():
+    r = client.get(
+        "/api/conjunctions.ics",
+        params={"birth_date": "1971-03-15", "birth_time": "04:30"},
+    )
+    assert r.status_code == 422
+
+
+def test_ics_feed_unresolvable_place_is_400():
+    r = client.get(
+        "/api/conjunctions.ics",
+        params={
+            "birth_date": "1971-03-15",
+            "birth_time": "04:30",
+            "birth_place": "Xyzzy Nowhereville, Atlantis",
+        },
+    )
+    assert r.status_code == 400

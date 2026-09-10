@@ -4,7 +4,7 @@ import { API_BASE_URL, fetchConjunctions } from './api'
 import { BirthForm } from './components/BirthForm'
 import { EventsTable } from './components/EventsTable'
 import { NatalChartTable } from './components/NatalChartTable'
-import { buildShareableUrl } from './shareLink'
+import { buildIcsFeedUrl, buildShareableUrl } from './shareLink'
 import type { ConjunctionsRequest, ConjunctionsResponse } from './types'
 
 export default function App() {
@@ -13,6 +13,7 @@ export default function App() {
   const [result, setResult] = useState<ConjunctionsResponse | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [shareUrl, setShareUrl] = useState('')
+  const [icsFeedUrl, setIcsFeedUrl] = useState('')
 
   async function handleSubmit(request: ConjunctionsRequest, name: string) {
     setLoading(true)
@@ -25,6 +26,7 @@ export default function App() {
       // it reproduces this exact search even if the backend re-derives some
       // display fields (e.g. resolved_place) differently on a later run.
       setShareUrl(buildShareableUrl(request))
+      setIcsFeedUrl(buildIcsFeedUrl(request))
     } catch (err) {
       setResult(null)
       setError(err instanceof Error ? err.message : String(err))
@@ -71,7 +73,11 @@ export default function App() {
             {displayName && (
               <h2 className="for-name">Results for {displayName}</h2>
             )}
-            <NatalChartTable chart={result.natal_chart} shareUrl={shareUrl} />
+            <NatalChartTable
+              chart={result.natal_chart}
+              shareUrl={shareUrl}
+              icsFeedUrl={icsFeedUrl}
+            />
             <EventsTable result={result} />
           </>
         )}

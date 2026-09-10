@@ -45,7 +45,7 @@ function slugify(text: string): string {
 export function icsFileName(event: ConjunctionEvent): string {
   const bodyName = BODY_NAME[event.transiting_body]
   const dateStamp = event.utc.slice(0, 10) // YYYY-MM-DD
-  return `${slugify(bodyName)}-conjunct-${slugify(event.natal_key)}-${dateStamp}.ics`
+  return `${slugify(event.natal_key)}-conjunct-natal-${slugify(bodyName)}-${dateStamp}.ics`
 }
 
 /**
@@ -62,9 +62,9 @@ export function buildConjunctionIcsDataUri(event: ConjunctionEvent): string {
   const dtEnd = toIcsUtcStamp(end)
   const dtStamp = toIcsUtcStamp(new Date())
 
-  const summary = `${bodyName} conjunct ${event.natal_key}`
+  const summary = `${event.natal_key} conjunct Natal ${bodyName}`
   const description = `Transiting ${bodyName} conjuncts natal ${event.natal_key} (${event.natal_label}).`
-  const uid = `${slugify(bodyName)}-${slugify(event.natal_key)}-${dtStart}@astrology-conjunction-finder`
+  const uid = `${slugify(event.natal_key)}-${slugify(bodyName)}-${dtStart}@astrology-conjunction-finder`
 
   const lines = [
     'BEGIN:VCALENDAR',

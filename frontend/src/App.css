@@ -234,6 +234,10 @@
 }
 
 .share-link {
+  margin-bottom: 0.9rem;
+}
+
+.share-link:last-child {
   margin-bottom: 0.4rem;
 }
 

@@ -10,12 +10,15 @@ Fully stateless — no auth, no database, nothing persisted between requests.
 from __future__ import annotations
 
 import os
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from mangum import Mangum
 
 from .ephemeris import EphemerisError
+from .ics import build_ics_feed
 from .location import LocationError, resolve_location
 from .natal import compute_natal_chart
 from .schemas import (
@@ -23,8 +26,9 @@ from .schemas import (
     ConjunctionsRequest,
     ConjunctionsResponse,
     NatalChart,
+    TransitingBody,
 )
-from .transits import find_conjunctions
+from .transits import default_ics_window, find_conjunctions, find_conjunctions_for_dates
 
 # Allowed CORS origins, comma-separated. Default covers the Vite dev server on
 # both the hostname and loopback-IP spellings it may be reached by.
@@ -103,6 +107,84 @@ def conjunctions(request: ConjunctionsRequest) -> ConjunctionsResponse:
         range_start=request.range_start_date.isoformat(),
         range_end=request.range_end_date.isoformat(),
         bodies=request.bodies,
+    )
+
+
+# Query-string equivalent of ConjunctionsRequest's birth fields, minus the
+# search window: a subscription feed's whole point is that its window
+# rolls forward on its own (see `default_ics_window`) rather than being
+# pinned to whatever range was true when the URL was generated.
+@app.get("/api/conjunctions.ics")
+def conjunctions_ics(
+    birth_date: Annotated[str, Query(description="YYYY-MM-DD")],
+    birth_time: Annotated[str, Query(description="HH:MM, 24h, local to birth place")],
+    birth_place: Annotated[str | None, Query()] = None,
+    latitude: Annotated[float | None, Query(ge=-90, le=90)] = None,
+    longitude: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    name: Annotated[str | None, Query()] = None,
+    bodies: Annotated[
+        list[TransitingBody] | None,
+        Query(description="Repeat the param per body, e.g. ?bodies=moon&bodies=sun"),
+    ] = None,
+) -> PlainTextResponse:
+    """A public, subscribable .ics feed: 1 month back, 6 months ahead.
+
+    Meant for pasting into a calendar client's "subscribe by URL" field
+    (Google Calendar, Outlook, Apple Calendar all support this), not for the
+    web frontend, which already gets richer per-search results from
+    ``/api/conjunctions``. No auth: this endpoint is a GET with everything it
+    needs in the query string on purpose, because that is the only shape a
+    calendar client's "add by URL" feature can drive — the request/response
+    is otherwise identical in spirit to POST /api/conjunctions.
+    """
+    try:
+        birth_info = BirthInfo(
+            birth_date=birth_date,  # type: ignore[arg-type]
+            birth_time=birth_time,  # type: ignore[arg-type]
+            birth_place=birth_place,
+            latitude=latitude,
+            longitude=longitude,
+            name=name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    selected_bodies: list[TransitingBody] = (
+        [b for b in ("moon", "sun") if b in bodies] if bodies else ["moon", "sun"]
+    )
+    if not selected_bodies:
+        raise HTTPException(
+            status_code=422,
+            detail="Select at least one transiting body ('moon' and/or 'sun').",
+        )
+
+    try:
+        location = resolve_location(
+            place=birth_info.birth_place,
+            latitude=birth_info.latitude,
+            longitude=birth_info.longitude,
+        )
+        chart = compute_natal_chart(birth_info, location=location)
+        start_date, end_date = default_ics_window()
+        events = find_conjunctions_for_dates(
+            chart, start_date=start_date, end_date=end_date, bodies=selected_bodies
+        )
+    except LocationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except EphemerisError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    calendar_name = f"{chart.name}: Conjunctions" if chart.name else "Conjunctions"
+    ics_text = build_ics_feed(chart, events, calendar_name)
+    return PlainTextResponse(
+        content=ics_text,
+        media_type="text/calendar; charset=utf-8",
+        headers={
+            "Content-Disposition": 'inline; filename="conjunctions.ics"',
+            # Subscribed feeds are re-fetched periodically by the calendar
+            # client, not once — a long cache would show a stale window.
+            "Cache-Control": "public, max-age=3600",
+        },
     )
 
 
