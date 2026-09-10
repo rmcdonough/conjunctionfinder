@@ -90,7 +90,10 @@ After a successful search, the exact URL that reproduces it appears at the
 top of the natal chart card (`src/shareLink.ts` builds it from the request
 that was actually sent) with a copy-to-clipboard button — falls back to
 manual select/copy if the Clipboard API is unavailable (e.g. insecure
-context or a denied permission).
+context or a denied permission). The generated link deliberately omits
+`start_year`/`start_month`/`end_month` (kept: `end_year`) — the search
+window params below are all still accepted if you build a URL by hand, just
+not part of the auto-generated one.
 
 | Param | Maps to | Notes |
 | --- | --- | --- |

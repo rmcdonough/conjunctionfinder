@@ -24,10 +24,7 @@ export function buildShareableUrl(request: ConjunctionsRequest): string {
     params.set('longitude', String(request.longitude))
   }
 
-  params.set('start_year', String(request.start_year))
-  params.set('start_month', String(request.start_month))
   params.set('end_year', String(request.end_year))
-  params.set('end_month', String(request.end_month))
   params.set('bodies', request.bodies.join(','))
 
   const { origin, pathname } = window.location
