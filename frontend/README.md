@@ -46,10 +46,11 @@ src/
   api.ts                       fetch wrapper + FastAPI error-shape flattening
   types.ts                     mirrors backend/app/schemas.py
   dates.ts                     month arithmetic + ISO timestamp formatting
+  shareLink.ts                 builds the reproduce-this-search URL
   env.d.ts                     types VITE_API_BASE_URL
   components/
     BirthForm.tsx              the form and all client-side validation
-    NatalChartTable.tsx        resolved location summary + 25 natal points
+    NatalChartTable.tsx        resolved location summary + 25 natal points + share-link field
     EventsTable.tsx            conjunctions, grouped by month
   index.css                    design tokens, element defaults
   App.css                      layout and component styles
@@ -85,6 +86,11 @@ coordinates.
 string, so a link opens the form already populated (search still requires
 pressing "Find conjunctions" — nothing fires automatically on load). Params
 are read once at mount; editing the form afterwards does not rewrite the URL.
+After a successful search, the exact URL that reproduces it appears at the
+top of the natal chart card (`src/shareLink.ts` builds it from the request
+that was actually sent) with a copy-to-clipboard button — falls back to
+manual select/copy if the Clipboard API is unavailable (e.g. insecure
+context or a denied permission).
 
 | Param | Maps to | Notes |
 | --- | --- | --- |

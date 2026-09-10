@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { formatIsoInOwnZone, isoOffsetLabel } from '../dates'
 import type { NatalChart, NatalPointCategory } from '../types'
 
@@ -8,7 +9,51 @@ const CATEGORY_LABEL: Record<NatalPointCategory, string> = {
   house: 'House cusp',
 }
 
-export function NatalChartTable({ chart }: { chart: NatalChart }) {
+/** A read-only URL field with a one-click copy button. */
+function ShareLinkField({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false)
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard API can be unavailable (e.g. insecure context); the field
+      // is still selectable text, so manual copy always works as a fallback.
+    }
+  }
+
+  return (
+    <div className="share-link">
+      <span className="share-link-label">Shareable link</span>
+      <div className="share-link-row">
+        <input
+          type="text"
+          readOnly
+          value={url}
+          onFocus={(e) => e.currentTarget.select()}
+          aria-label="Shareable link for this search"
+        />
+        <button type="button" onClick={handleCopy}>
+          {copied ? 'Copied!' : 'Copy'}
+        </button>
+      </div>
+      <p className="hint">
+        Pre-fills the form with this birth data and search window — save it or
+        send it to reproduce this exact search.
+      </p>
+    </div>
+  )
+}
+
+export function NatalChartTable({
+  chart,
+  shareUrl,
+}: {
+  chart: NatalChart
+  shareUrl: string
+}) {
   return (
     <section className="card">
       <h2>Natal chart</h2>
@@ -18,6 +63,11 @@ export function NatalChartTable({ chart }: { chart: NatalChart }) {
       </p>
 
       <dl className="resolved">
+        {shareUrl && (
+          <div className="resolved-share">
+            <ShareLinkField url={shareUrl} />
+          </div>
+        )}
         <div>
           <dt>Resolved place</dt>
           <dd>{chart.resolved_place}</dd>
