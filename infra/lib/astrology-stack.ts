@@ -66,7 +66,14 @@ export class AstrologyStack extends cdk.Stack {
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
+          // NOT ALL_VIEWER: that policy forwards the original Host header
+          // (the CloudFront domain) straight through to API Gateway's
+          // regional endpoint, which rejects it as a Host mismatch —
+          // reproduced directly against the API (curl -H "Host: <cloudfront
+          // domain>") and confirmed that's the exact cause of a live 403.
+          // This AWS-managed policy is built for exactly this pairing: every
+          // viewer header/cookie/query string except Host.
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
         },
       },
       // No `domainNames`/`certificate` props — this is exactly what makes
@@ -93,8 +100,9 @@ export class AstrologyStack extends cdk.Stack {
       description: 'Public HTTPS URL for the whole site (frontend + /api/*)',
     });
     new cdk.CfnOutput(this, 'ApiBaseUrl', {
-      value: `https://${distribution.distributionDomainName}/api`,
-      description: 'Value to bake into VITE_API_BASE_URL for the frontend build',
+      value: `https://${distribution.distributionDomainName}`,
+      description:
+        'Value to bake into VITE_API_BASE_URL for the frontend build (no /api suffix — frontend/src/api.ts appends /api/... itself, same convention as the http://localhost:8000 local default)',
     });
     new cdk.CfnOutput(this, 'DistributionId', {
       value: distribution.distributionId,

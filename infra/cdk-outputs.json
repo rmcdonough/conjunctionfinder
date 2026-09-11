@@ -1,8 +1,0 @@
-{
-  "AstrologyConjunctionFinder": {
-    "ApiBaseUrl": "https://d2zdu2xikiypfs.cloudfront.net/api",
-    "BucketName": "astrologyconjunctionfinder-frontendbucketefe2e19c-bc4j2wwfckqo",
-    "DistributionId": "E1PUMG8NYKP1YK",
-    "SiteUrl": "https://d2zdu2xikiypfs.cloudfront.net"
-  }
-}
