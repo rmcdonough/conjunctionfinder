@@ -81,5 +81,28 @@ export class AstrologyStack extends cdk.Stack {
       distribution,
       distributionPaths: ['/*'],
     });
+
+    // Replace the localhost placeholder now that the real domain exists.
+    backendFn.addEnvironment(
+      'ALLOWED_ORIGINS',
+      `https://${distribution.distributionDomainName}`,
+    );
+
+    new cdk.CfnOutput(this, 'SiteUrl', {
+      value: `https://${distribution.distributionDomainName}`,
+      description: 'Public HTTPS URL for the whole site (frontend + /api/*)',
+    });
+    new cdk.CfnOutput(this, 'ApiBaseUrl', {
+      value: `https://${distribution.distributionDomainName}/api`,
+      description: 'Value to bake into VITE_API_BASE_URL for the frontend build',
+    });
+    new cdk.CfnOutput(this, 'DistributionId', {
+      value: distribution.distributionId,
+      description: 'CloudFront distribution ID (for manual invalidations)',
+    });
+    new cdk.CfnOutput(this, 'BucketName', {
+      value: siteBucket.bucketName,
+      description: 'Frontend S3 bucket name',
+    });
   }
 }
