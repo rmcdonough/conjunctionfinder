@@ -19,7 +19,6 @@
 
 .masthead p {
   color: var(--text-muted);
-  max-width: 60ch;
   margin: 0;
 }
 
@@ -112,7 +111,6 @@
   font-size: 0.82rem;
   color: var(--text-muted);
   margin: 0.35rem 0 0;
-  max-width: 65ch;
 }
 
 .hint-warn {
@@ -379,5 +377,4 @@ footer p {
   color: var(--text-muted);
   font-size: 0.82rem;
   margin: 0;
-  max-width: 70ch;
 }
