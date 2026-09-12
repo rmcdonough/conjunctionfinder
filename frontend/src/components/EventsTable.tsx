@@ -80,7 +80,7 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
               <th scope="col">Transiting</th>
               <th scope="col">Natal point</th>
               <th scope="col">Natal position</th>
-              <th scope="col">Calendar invite</th>
+              <th scope="col">Calendar invite MAY NOT WORK ON MOBILE DEVICES</th>
             </tr>
           </thead>
           {groups.map((group) => (
