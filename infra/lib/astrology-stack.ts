@@ -3,8 +3,11 @@ import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigwv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as rum from 'aws-cdk-lib/aws-rum';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import { Construct } from 'constructs';
@@ -160,6 +163,70 @@ export class AstrologyStack extends cdk.Stack {
       `https://${distribution.distributionDomainName}`,
     );
 
+    // ── Real User Monitoring (CloudWatch RUM) ──────────────────────────
+    //
+    // RUM's app monitor is bound to distribution.distributionDomainName —
+    // a CloudFormation token, not a literal string — so this works with the
+    // randomized *.cloudfront.net domain this stack generates, with no
+    // custom domain and no manual post-deploy configuration step. If this
+    // distribution is ever torn down and recreated, the new random domain
+    // flows through automatically on the next deploy.
+    //
+    // Anonymous (unauthenticated) ingestion only: a Cognito identity pool
+    // with unauthenticated identities enabled hands out short-lived,
+    // scoped-down credentials to every browser that loads the page, purely
+    // so the RUM web client can call PutRumEvents. No sign-in, no PII, no
+    // persistent per-visitor identity beyond what RUM itself tracks.
+    const rumIdentityPool = new cognito.CfnIdentityPool(this, 'RumIdentityPool', {
+      allowUnauthenticatedIdentities: true,
+    });
+
+    const rumUnauthenticatedRole = new iam.Role(this, 'RumUnauthenticatedRole', {
+      assumedBy: new iam.FederatedPrincipal(
+        'cognito-identity.amazonaws.com',
+        {
+          StringEquals: {
+            'cognito-identity.amazonaws.com:aud': rumIdentityPool.ref,
+          },
+          'ForAnyValue:StringLike': {
+            'cognito-identity.amazonaws.com:amr': 'unauthenticated',
+          },
+        },
+        'sts:AssumeRoleWithWebIdentity',
+      ),
+    });
+
+    new cognito.CfnIdentityPoolRoleAttachment(this, 'RumIdentityPoolRoleAttachment', {
+      identityPoolId: rumIdentityPool.ref,
+      roles: { unauthenticated: rumUnauthenticatedRole.roleArn },
+    });
+
+    const rumAppMonitor = new rum.CfnAppMonitor(this, 'RumAppMonitor', {
+      name: 'AstrologyConjunctionFinder',
+      domain: distribution.distributionDomainName,
+      cwLogEnabled: true, // also mirrors RUM events into CloudWatch Logs
+      appMonitorConfiguration: {
+        allowCookies: true,
+        enableXRay: false,
+        sessionSampleRate: 1, // low-traffic personal project — sample everything
+        telemetries: ['errors', 'performance', 'http'],
+        identityPoolId: rumIdentityPool.ref,
+        guestRoleArn: rumUnauthenticatedRole.roleArn,
+      },
+    });
+
+    // Scope the guest role down to exactly this app monitor, not every
+    // app monitor in the account/region.
+    rumUnauthenticatedRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['rum:PutRumEvents'],
+        resources: [
+          `arn:aws:rum:${this.region}:${this.account}:appmonitor/${rumAppMonitor.name}`,
+        ],
+      }),
+    );
+
     new cdk.CfnOutput(this, 'SiteUrl', {
       value: `https://${distribution.distributionDomainName}`,
       description: 'Public HTTPS URL for the whole site (frontend + /api/*)',
@@ -176,6 +243,18 @@ export class AstrologyStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'BucketName', {
       value: siteBucket.bucketName,
       description: 'Frontend S3 bucket name',
+    });
+    new cdk.CfnOutput(this, 'RumAppMonitorId', {
+      value: rumAppMonitor.attrId,
+      description: 'Value to bake into VITE_RUM_APPLICATION_ID for the frontend build',
+    });
+    new cdk.CfnOutput(this, 'RumIdentityPoolId', {
+      value: rumIdentityPool.ref,
+      description: 'Value to bake into VITE_RUM_IDENTITY_POOL_ID for the frontend build',
+    });
+    new cdk.CfnOutput(this, 'RumRegion', {
+      value: this.region,
+      description: 'Value to bake into VITE_RUM_REGION for the frontend build',
     });
   }
 }
