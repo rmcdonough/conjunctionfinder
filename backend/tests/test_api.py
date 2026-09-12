@@ -256,3 +256,69 @@ def test_ics_feed_unresolvable_place_is_400():
         },
     )
     assert r.status_code == 400
+
+
+# ── /api/conjunction-event.ics ──────────────────────────────────────────────
+
+EVENT_ICS_PARAMS = {
+    "transiting_body": "moon",
+    "natal_key": "1st House",
+    "natal_label": "25\u00b016\u203200\u2033 Leo",
+    "utc": "2026-06-15T14:30:00+00:00",
+}
+
+
+def test_conjunction_event_ics_returns_valid_single_event_calendar():
+    r = client.get("/api/conjunction-event.ics", params=EVENT_ICS_PARAMS)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/calendar")
+    assert "attachment" in r.headers["content-disposition"]
+    assert "1st-house-conjunct-natal-moon-2026-06-15.ics" in r.headers["content-disposition"]
+    text = r.text
+    assert text.startswith("BEGIN:VCALENDAR\r\n")
+    assert text.rstrip("\r\n").endswith("END:VCALENDAR")
+    assert text.count("BEGIN:VEVENT") == 1
+    assert text.count("END:VEVENT") == 1
+    assert "SUMMARY:1st House conjunct Natal Moon\r\n" in text
+    assert "DTSTART:20260615T143000Z\r\n" in text
+    assert "DTEND:20260615T150000Z\r\n" in text  # 30-minute visible span
+
+
+def test_conjunction_event_ics_honours_sun():
+    r = client.get(
+        "/api/conjunction-event.ics",
+        params={**EVENT_ICS_PARAMS, "transiting_body": "sun"},
+    )
+    assert r.status_code == 200, r.text
+    assert "SUMMARY:1st House conjunct Natal Sun\r\n" in r.text
+
+
+def test_conjunction_event_ics_escapes_special_characters():
+    r = client.get(
+        "/api/conjunction-event.ics",
+        params={**EVENT_ICS_PARAMS, "natal_key": "A, B; C"},
+    )
+    assert r.status_code == 200, r.text
+    assert "SUMMARY:A\\, B\\; C conjunct Natal Moon\r\n" in r.text
+
+
+def test_conjunction_event_ics_rejects_bad_timestamp():
+    r = client.get(
+        "/api/conjunction-event.ics",
+        params={**EVENT_ICS_PARAMS, "utc": "not-a-timestamp"},
+    )
+    assert r.status_code == 422
+
+
+def test_conjunction_event_ics_rejects_bad_body():
+    r = client.get(
+        "/api/conjunction-event.ics",
+        params={**EVENT_ICS_PARAMS, "transiting_body": "mars"},
+    )
+    assert r.status_code == 422
+
+
+def test_conjunction_event_ics_requires_all_params():
+    params = {k: v for k, v in EVENT_ICS_PARAMS.items() if k != "natal_key"}
+    r = client.get("/api/conjunction-event.ics", params=params)
+    assert r.status_code == 422

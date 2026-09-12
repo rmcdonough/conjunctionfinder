@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -19,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
 from .ephemeris import EphemerisError
-from .ics import build_ics_feed
+from .ics import build_ics_feed, build_single_event_ics, single_event_ics_filename
 from .location import LocationError, resolve_location
 from .logging_config import configure_logging
 from .natal import compute_natal_chart
@@ -243,6 +244,46 @@ def conjunctions_ics(
             # Subscribed feeds are re-fetched periodically by the calendar
             # client, not once — a long cache would show a stale window.
             "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
+@app.get("/api/conjunction-event.ics")
+def conjunction_event_ics(
+    transiting_body: Annotated[TransitingBody, Query()],
+    natal_key: Annotated[str, Query(description="e.g. '1st House', 'Chiron'")],
+    natal_label: Annotated[str, Query(description="e.g. '25\u00b016\u203200\u2033 Leo'")],
+    utc: Annotated[str, Query(description="ISO 8601 UTC timestamp of the conjunction")],
+) -> PlainTextResponse:
+    """A single conjunction event as a downloadable .ics file.
+
+    Backs the per-row "Calendar invite" link in the results table. This used
+    to be built entirely client-side as a ``data:`` URI (see the frontend's
+    now-removed ``ics.ts``), which downloads fine on desktop browsers but not
+    on iOS Safari: WebKit does not honour the anchor ``download`` attribute
+    on ``data:`` URIs, so tapping the link there did nothing. A real HTTP
+    resource with a ``text/calendar`` content type works everywhere,
+    including iOS Safari's native "tap a .ics link -> Add to Calendar" flow.
+
+    Deliberately stateless and small: the frontend already has every field
+    needed for the event from its original search response, so this just
+    re-renders those exact fields into an .ics file server-side — no birth
+    data, geocoding, or ephemeris recomputation involved.
+    """
+    try:
+        datetime.fromisoformat(utc)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"utc must be an ISO 8601 timestamp: {exc}"
+        ) from exc
+
+    ics_text = build_single_event_ics(transiting_body, natal_key, natal_label, utc)
+    filename = single_event_ics_filename(transiting_body, natal_key, utc)
+    return PlainTextResponse(
+        content=ics_text,
+        media_type="text/calendar; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
         },
     )
 

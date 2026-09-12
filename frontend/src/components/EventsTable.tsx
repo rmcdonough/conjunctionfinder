@@ -1,5 +1,5 @@
 import { browserMonthLabel, browserOffsetLabel, formatBrowserLocal, isoMonthLabel } from '../dates'
-import { buildConjunctionIcsDataUri, icsFileName } from '../ics'
+import { conjunctionEventIcsUrl } from '../ics'
 import type { ConjunctionEvent, ConjunctionsResponse } from '../types'
 
 const BODY_GLYPH: Record<ConjunctionEvent['transiting_body'], string> = {
@@ -112,8 +112,7 @@ export function EventsTable({ result }: { result: ConjunctionsResponse }) {
                   <td className="mono">{event.natal_label}</td>
                   <td>
                     <a
-                      href={buildConjunctionIcsDataUri(event)}
-                      download={icsFileName(event)}
+                      href={conjunctionEventIcsUrl(event)}
                     >
                       Link
                     </a>
