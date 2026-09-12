@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Optional custom domain: set SITE_DOMAIN_NAME / SITE_HOSTED_ZONE_ID /
+# SITE_CERTIFICATE_ARN (all three, or none — see infra/README.md) before
+# running this script. They're inherited by the `cdk deploy` calls below
+# with no extra plumbing needed here.
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA_DIR="$REPO_ROOT/infra"
 FRONTEND_DIR="$REPO_ROOT/frontend"
@@ -32,9 +37,37 @@ with open('$OUTPUTS_FILE') as f:
 stack = next(iter(outputs.values()))
 print(stack['SiteUrl'])
 ")"
+RUM_APPLICATION_ID="$(python3 -c "
+import json
+with open('$OUTPUTS_FILE') as f:
+    outputs = json.load(f)
+stack = next(iter(outputs.values()))
+print(stack['RumAppMonitorId'])
+")"
+RUM_IDENTITY_POOL_ID="$(python3 -c "
+import json
+with open('$OUTPUTS_FILE') as f:
+    outputs = json.load(f)
+stack = next(iter(outputs.values()))
+print(stack['RumIdentityPoolId'])
+")"
+RUM_REGION="$(python3 -c "
+import json
+with open('$OUTPUTS_FILE') as f:
+    outputs = json.load(f)
+stack = next(iter(outputs.values()))
+print(stack['RumRegion'])
+")"
 
 echo "==> Rebuilding frontend with the real API URL: $API_BASE_URL"
-( cd "$FRONTEND_DIR" && VITE_API_BASE_URL="$API_BASE_URL" npm run build )
+(
+  cd "$FRONTEND_DIR" &&
+  VITE_API_BASE_URL="$API_BASE_URL" \
+  VITE_RUM_APPLICATION_ID="$RUM_APPLICATION_ID" \
+  VITE_RUM_IDENTITY_POOL_ID="$RUM_IDENTITY_POOL_ID" \
+  VITE_RUM_REGION="$RUM_REGION" \
+  npm run build
+)
 
 echo "==> cdk deploy (pass 2 — uploads the correctly-built frontend, invalidates CloudFront)"
 ( cd "$INFRA_DIR" && npx cdk deploy --require-approval never --outputs-file "$OUTPUTS_FILE" )

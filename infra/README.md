@@ -29,9 +29,47 @@ same-origin from the browser's point of view in production, so CORS is not
 load-bearing there (it stays configured for local dev, where the Vite dev
 server and uvicorn genuinely are cross-origin).
 
-No custom domain: CloudFront's own `*.cloudfront.net` name comes with a
-free, already-attached default TLS certificate, satisfying the "HTTPS, no
-personalized domain" requirement with zero extra ACM/Route53 resources.
+No custom domain by default: CloudFront's own `*.cloudfront.net` name comes
+with a free, already-attached default TLS certificate, satisfying "HTTPS, no
+personalized domain" with zero extra ACM/Route53 resources. An optional
+custom domain (with the `*.cloudfront.net` name still working as a
+fallback) is supported — see "Custom domain" below.
+
+## Custom domain
+
+To serve the site on your own domain instead of (in addition to) the
+CloudFront default name, set three environment variables before running
+`cdk deploy`/`./deploy.sh` — all three or none, they're validated together:
+
+```bash
+export SITE_DOMAIN_NAME="example.com"
+export SITE_HOSTED_ZONE_ID="Z0123456789ABCDEFGHIJ"   # Route 53 zone for example.com
+export SITE_CERTIFICATE_ARN="arn:aws:acm:us-east-1:<account>:certificate/<id>"
+```
+
+Requirements CDK does **not** provision for you (bring your own):
+- A Route 53 public hosted zone for the domain (`aws route53 list-hosted-zones`).
+- An ACM certificate covering both the apex and `www.` subdomain, **issued in
+  `us-east-1` specifically** — CloudFront only accepts certificates from that
+  region regardless of which region the rest of the stack deploys to.
+
+What the stack then does automatically:
+- Adds `example.com` and `www.example.com` as CloudFront `Aliases`, with the
+  ACM certificate attached (`ViewerCertificate`).
+- Creates Route 53 alias A/AAAA records for both names, pointing at the
+  distribution (no NS/SOA changes — assumes the zone's NS records already
+  point at Route 53).
+- Widens the backend's `ALLOWED_ORIGINS` and the RUM app monitor's
+  `DomainList` to cover the custom domain(s) **and** the CloudFront default
+  domain together — the default domain keeps serving traffic either way
+  (CloudFront never disables it), so it must stay in both allow-lists or it
+  would start failing CORS/RUM matching after the custom domain is added.
+- Points `SiteUrl`/`ApiBaseUrl` (and therefore the frontend's baked-in
+  `VITE_API_BASE_URL`) at the custom domain instead of the CloudFront name.
+
+This is a same-distribution update, not a replacement — no new CloudFront
+distribution ID, no downtime, existing bookmarks/links to the
+`*.cloudfront.net` URL keep working.
 
 ## Deploying
 

@@ -1,21 +1,54 @@
 import * as cdk from 'aws-cdk-lib';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigwv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as rum from 'aws-cdk-lib/aws-rum';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
+export interface AstrologyStackProps extends cdk.StackProps {
+  /**
+   * Custom domain to serve the site on, e.g. "conjunctionfinder.ca".
+   * Optional — omit (along with hostedZoneId/certificateArn) to keep the
+   * default behavior: CloudFront issues its own *.cloudfront.net name with
+   * a free default certificate. All three of domainName/hostedZoneId/
+   * certificateArn must be set together to enable the custom domain; this
+   * keeps the stack deployable as-is in a fresh account with no Route 53
+   * zone or ACM cert of its own yet.
+   */
+  readonly domainName?: string;
+  /** Route 53 hosted zone ID that owns domainName. */
+  readonly hostedZoneId?: string;
+  /**
+   * ACM certificate ARN covering domainName. CloudFront requires this
+   * certificate to live in us-east-1 specifically, regardless of which
+   * region the stack itself deploys to — this is a plain ARN reference,
+   * not a resource CDK creates, so the cross-region mismatch is fine.
+   */
+  readonly certificateArn?: string;
+}
+
 export class AstrologyStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props?: AstrologyStackProps) {
     super(scope, id, props);
+
+    const { domainName, hostedZoneId, certificateArn } = props ?? {};
+    const useCustomDomain = Boolean(domainName && hostedZoneId && certificateArn);
+    if (Boolean(domainName || hostedZoneId || certificateArn) && !useCustomDomain) {
+      throw new Error(
+        'domainName, hostedZoneId and certificateArn must all be set together (or all omitted).',
+      );
+    }
 
     // Central bucket for every access log this stack produces (S3, its own
     // server access logs; CloudFront's standard logs) — one place to look,
@@ -118,6 +151,15 @@ export class AstrologyStack extends cdk.Stack {
 
     const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
       defaultRootObject: 'index.html',
+      // Omitting domainNames/certificate (the useCustomDomain === false case)
+      // is exactly what makes CloudFront issue its own *.cloudfront.net name
+      // with a free default certificate — the zero-custom-domain path this
+      // stack still supports for a fresh account with no Route 53 zone or
+      // ACM cert of its own yet.
+      domainNames: useCustomDomain ? [domainName!, `www.${domainName!}`] : undefined,
+      certificate: useCustomDomain
+        ? acm.Certificate.fromCertificateArn(this, 'SiteCertificate', certificateArn!)
+        : undefined,
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -141,14 +183,35 @@ export class AstrologyStack extends cdk.Stack {
           originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
         },
       },
-      // No `domainNames`/`certificate` props — this is exactly what makes
-      // CloudFront issue its own *.cloudfront.net name with a free default
-      // certificate. That satisfies "TLS, no custom domain" with zero extra
-      // resources.
+      // Custom-domain path also gets the CloudFront default *.cloudfront.net
+      // domain — CloudFront never turns that off, so the auto-generated
+      // name keeps working as a fallback URL alongside the custom domain.
       enableLogging: true,
       logBucket: accessLogsBucket,
       logFilePrefix: 'cloudfront-access-logs/',
     });
+
+    if (useCustomDomain) {
+      const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'SiteHostedZone', {
+        hostedZoneId: hostedZoneId!,
+        zoneName: domainName!,
+      });
+      const target = route53.RecordTarget.fromAlias(
+        new route53Targets.CloudFrontTarget(distribution),
+      );
+      new route53.ARecord(this, 'SiteAliasA', { zone: hostedZone, target });
+      new route53.AaaaRecord(this, 'SiteAliasAAAA', { zone: hostedZone, target });
+      new route53.ARecord(this, 'SiteAliasWwwA', {
+        zone: hostedZone,
+        recordName: `www.${domainName}`,
+        target,
+      });
+      new route53.AaaaRecord(this, 'SiteAliasWwwAAAA', {
+        zone: hostedZone,
+        recordName: `www.${domainName}`,
+        target,
+      });
+    }
 
     new s3deploy.BucketDeployment(this, 'FrontendDeployment', {
       sources: [s3deploy.Source.asset(path.join(__dirname, '..', '..', 'frontend', 'dist'))],
@@ -157,20 +220,41 @@ export class AstrologyStack extends cdk.Stack {
       distributionPaths: ['/*'],
     });
 
-    // Replace the localhost placeholder now that the real domain exists.
-    backendFn.addEnvironment(
-      'ALLOWED_ORIGINS',
-      `https://${distribution.distributionDomainName}`,
-    );
+    // Canonical public URL: the custom domain once configured, otherwise
+    // CloudFront's own generated name. Backend CORS and the RUM app monitor
+    // both key off this — kept in one place so the two behaviors (custom
+    // domain vs. auto-generated) can't drift apart.
+    const siteUrl = useCustomDomain
+      ? `https://${domainName}`
+      : `https://${distribution.distributionDomainName}`;
+
+    // Accept both the canonical URL and the CloudFront default domain
+    // (which CloudFront always keeps serving alongside any custom domain)
+    // so the API/Lambda keep functioning for either — a stale bookmark, a
+    // link shared before DNS propagated, or the *.cloudfront.net URL from
+    // before this domain was added should never suddenly start seeing CORS
+    // failures.
+    const allowedOrigins = useCustomDomain
+      ? [
+          `https://${domainName}`,
+          `https://www.${domainName}`,
+          `https://${distribution.distributionDomainName}`,
+        ]
+      : [`https://${distribution.distributionDomainName}`];
+    backendFn.addEnvironment('ALLOWED_ORIGINS', allowedOrigins.join(','));
 
     // ── Real User Monitoring (CloudWatch RUM) ──────────────────────────
     //
-    // RUM's app monitor is bound to distribution.distributionDomainName —
-    // a CloudFormation token, not a literal string — so this works with the
-    // randomized *.cloudfront.net domain this stack generates, with no
-    // custom domain and no manual post-deploy configuration step. If this
-    // distribution is ever torn down and recreated, the new random domain
-    // flows through automatically on the next deploy.
+    // RUM matches events against the page's actual origin domain, so this
+    // needs every domain visitors can actually load the site from: the
+    // custom domain(s) once configured, and always the CloudFront default
+    // name too (it keeps serving traffic regardless — see allowedOrigins
+    // above). RUM's `domainList` (not the older singular `domain`) is what
+    // supports more than one domain on a single app monitor. Every value
+    // here is a CloudFormation token or a plain string derived from one, so
+    // this remains correct with no manual post-deploy step whether or not
+    // a custom domain is configured, and if the distribution is ever torn
+    // down and recreated, the new random name flows through automatically.
     //
     // Anonymous (unauthenticated) ingestion only: a Cognito identity pool
     // with unauthenticated identities enabled hands out short-lived,
@@ -201,9 +285,16 @@ export class AstrologyStack extends cdk.Stack {
       roles: { unauthenticated: rumUnauthenticatedRole.roleArn },
     });
 
+    const rumDomainList = useCustomDomain
+      ? [domainName!, `www.${domainName!}`, distribution.distributionDomainName]
+      : undefined;
+
     const rumAppMonitor = new rum.CfnAppMonitor(this, 'RumAppMonitor', {
       name: 'AstrologyConjunctionFinder',
-      domain: distribution.distributionDomainName,
+      // domain (singular) and domainList are mutually exclusive; only one
+      // is ever set depending on useCustomDomain.
+      domain: useCustomDomain ? undefined : distribution.distributionDomainName,
+      domainList: rumDomainList,
       cwLogEnabled: true, // also mirrors RUM events into CloudWatch Logs
       appMonitorConfiguration: {
         allowCookies: true,
@@ -228,11 +319,11 @@ export class AstrologyStack extends cdk.Stack {
     );
 
     new cdk.CfnOutput(this, 'SiteUrl', {
-      value: `https://${distribution.distributionDomainName}`,
+      value: siteUrl,
       description: 'Public HTTPS URL for the whole site (frontend + /api/*)',
     });
     new cdk.CfnOutput(this, 'ApiBaseUrl', {
-      value: `https://${distribution.distributionDomainName}`,
+      value: siteUrl,
       description:
         'Value to bake into VITE_API_BASE_URL for the frontend build (no /api suffix — frontend/src/api.ts appends /api/... itself, same convention as the http://localhost:8000 local default)',
     });
