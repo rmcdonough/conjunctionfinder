@@ -9,17 +9,19 @@ Fully stateless — no auth, no database, nothing persisted between requests.
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
-from mangum import Mangum
 
 from .ephemeris import EphemerisError
 from .ics import build_ics_feed
 from .location import LocationError, resolve_location
+from .logging_config import configure_logging
 from .natal import compute_natal_chart
 from .schemas import (
     BirthInfo,
@@ -29,6 +31,18 @@ from .schemas import (
     TransitingBody,
 )
 from .transits import default_ics_window, find_conjunctions, find_conjunctions_for_dates
+
+# Configure the app's own logging before anything else runs. Locally this
+# just formats plain text with a level; on Lambda, LoggingFormat.JSON on the
+# CDK-defined function makes the *platform* wrap our stdlib logging.Logger
+# output into structured JSON in CloudWatch (see infra/lib/astrology-stack.ts)
+# — the app only needs to log real fields via `extra`, not build JSON itself.
+configure_logging()
+logger = logging.getLogger("astrology")
+
+# Mangum is imported after logging is configured so any import-time noise
+# from it (or its dependencies) is still captured under our config.
+from mangum import Mangum  # noqa: E402
 
 # Allowed CORS origins, comma-separated. Default covers the Vite dev server on
 # both the hostname and loopback-IP spellings it may be reached by.
@@ -57,6 +71,45 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """One structured log line per request: method, path, status, duration.
+
+    This is the application-level counterpart to the Lambda platform's own
+    START/END/REPORT lines (which only know duration/memory, not which
+    endpoint was hit or how it resolved) — see logging_config.py's module
+    docstring for how this becomes structured JSON in CloudWatch.
+    """
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = round((time.perf_counter() - start) * 1000, 1)
+        logger.exception(
+            "Unhandled exception while processing request",
+            extra={
+                "http_method": request.method,
+                "http_path": request.url.path,
+                "duration_ms": duration_ms,
+            },
+        )
+        raise
+    duration_ms = round((time.perf_counter() - start) * 1000, 1)
+    logger.info(
+        "%s %s -> %s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        extra={
+            "http_method": request.method,
+            "http_path": request.url.path,
+            "http_status": response.status_code,
+            "duration_ms": duration_ms,
+        },
+    )
+    return response
+
+
 @app.get("/api/health")
 def health() -> dict[str, object]:
     return {"status": "ok", "allowed_origins": ALLOWED_ORIGINS}
@@ -69,8 +122,10 @@ def natal_chart(info: BirthInfo) -> NatalChart:
         return compute_natal_chart(info)
     except LocationError as exc:
         # Unresolvable place name / timezone is the caller's problem to fix.
+        logger.warning("Location resolution failed: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except EphemerisError as exc:
+        logger.warning("Ephemeris computation failed: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -96,8 +151,10 @@ def conjunctions(request: ConjunctionsRequest) -> ConjunctionsResponse:
             bodies=request.bodies,
         )
     except LocationError as exc:
+        logger.warning("Location resolution failed: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except EphemerisError as exc:
+        logger.warning("Ephemeris computation failed: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return ConjunctionsResponse(
@@ -170,8 +227,10 @@ def conjunctions_ics(
             chart, start_date=start_date, end_date=end_date, bodies=selected_bodies
         )
     except LocationError as exc:
+        logger.warning("Location resolution failed: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except EphemerisError as exc:
+        logger.warning("Ephemeris computation failed: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     calendar_name = f"{chart.name}: Conjunctions" if chart.name else "Conjunctions"
