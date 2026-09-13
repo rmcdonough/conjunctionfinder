@@ -8,6 +8,10 @@ Output is a data table, not a chart wheel. There is no login, no database and
 nothing is stored: every request carries its own birth data and gets its answer
 back in the same response.
 
+![Screenshot of the Conjunction Finder form, filled in and ready to search](docs/screenshot.png)
+
+Live at [conjunctionfinder.ca](https://conjunctionfinder.ca).
+
 ## Architecture
 
 ```
