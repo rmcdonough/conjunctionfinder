@@ -51,6 +51,16 @@ How a request is answered:
    longitude at that instant; it must land within 1 arcminute of the natal
    target to be reported. In practice it agrees to ~1e-8°.
 
+### As deployed on AWS
+
+![AWS architecture: CloudFront in front of an S3 frontend and an API Gateway + Lambda backend, with RUM, Cognito, and CloudWatch logging](docs/architecture.png)
+
+One CloudFront distribution, two cache behaviors (`/*` → S3, `/api/*` → API
+Gateway → Lambda container image), no database. Provisioned via CDK
+(`infra/`); see `infra/README.md` for the full breakdown, or open
+[docs/architecture.html](docs/architecture.html) directly in a browser for
+the same diagram at full resolution.
+
 ## Run it locally
 
 Two terminals. Backend first:
