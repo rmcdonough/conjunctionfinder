@@ -84,6 +84,14 @@ export class AstrologyStack extends cdk.Stack {
       memorySize: 1024,
       timeout: cdk.Duration.seconds(30),
       architecture: lambda.Architecture.X86_64,
+      // AWS X-Ray active tracing. CDK auto-attaches the AWSXRayDaemonWriteAccess
+      // policy this needs to the function's execution role. NOTE: API Gateway
+      // HTTP API (used below, apigwv2.HttpApi) has no X-Ray support at the
+      // platform level — only REST API (v1) does; this is a hard AWS
+      // limitation, not a CDK gap (confirmed via AWS's own X-Ray docs and
+      // closed CDK issue #25467). So this trace only starts at the Lambda —
+      // API Gateway itself will not appear as its own X-Ray segment.
+      tracing: lambda.Tracing.ACTIVE,
       environment: {
         // Placeholder; replaced with the real CloudFront domain once the
         // distribution exists (later task). Keeps local synth/diff runnable
