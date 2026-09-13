@@ -71,6 +71,40 @@ This is a same-distribution update, not a replacement — no new CloudFront
 distribution ID, no downtime, existing bookmarks/links to the
 `*.cloudfront.net` URL keep working.
 
+## Observability
+
+- **Logs**: structured JSON in CloudWatch Logs — Lambda application logs and
+  API Gateway access logs (see `backend/app/logging_config.py`), plus S3 and
+  CloudFront access logs in the shared `AccessLogsBucket`.
+- **Tracing**: AWS X-Ray active tracing on the backend Lambda
+  (`tracing: lambda.Tracing.ACTIVE`). **Not available on API Gateway** — HTTP
+  API (`apigwv2.HttpApi`, used here) has no X-Ray support at the platform
+  level; only REST API (v1) does. This is a hard AWS limitation, not a CDK
+  gap (see AWS's X-Ray/API Gateway docs and the closed CDK issue #25467
+  requesting exactly this for HttpApi). A trace starts at the Lambda; API
+  Gateway itself never appears as its own X-Ray segment.
+- **Real User Monitoring**: CloudWatch RUM app monitor, fed directly from
+  the browser via an unauthenticated Cognito identity pool (bypasses
+  CloudFront entirely) — see the RUM section further up in
+  `infra/lib/astrology-stack.ts`.
+- **Dashboard**: one CloudWatch dashboard (`AstrologyConjunctionFinder`)
+  covering every layer a request passes through, in that order —
+  CloudFront → API Gateway → Lambda → S3 (frontend origin) → RUM (what
+  browsers actually experienced, independent of backend-reported numbers).
+  The stack's `DashboardUrl` output is a direct console link. Notable
+  choices:
+  - Lambda's duration graph draws a red annotation line at 30s (the
+    function's own hard timeout) so a duration bar approaching it reads as
+    "about to be killed", not just "a bit slow".
+  - CloudFront metrics are always queried in `us-east-1` regardless of the
+    distribution's actual serving region or this stack's deploy region —
+    a plain AWS fact about where CloudFront publishes its own metrics.
+  - RUM and S3 storage metrics have no CDK L2 metric helpers, so those
+    widgets build `cloudwatch.Metric` directly against the real
+    `AWS/RUM`/`AWS/S3` namespaces and dimensions (confirmed live via
+    `aws cloudwatch list-metrics` against the deployed resources before
+    writing the widget definitions).
+
 ## Deploying
 
 From the repo root:

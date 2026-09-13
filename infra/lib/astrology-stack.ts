@@ -4,6 +4,7 @@ import * as apigwv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations'
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -354,6 +355,246 @@ export class AstrologyStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'RumRegion', {
       value: this.region,
       description: 'Value to bake into VITE_RUM_REGION for the frontend build',
+    });
+
+    // ── CloudWatch Dashboard ─────────────────────────────────────────────
+    //
+    // One dashboard covering every layer real traffic actually passes
+    // through: Lambda (the compute), API Gateway (the entry point in front
+    // of it), CloudFront (the entry point in front of THAT, plus the static
+    // frontend), the frontend S3 bucket, and CloudWatch RUM (what real
+    // browsers experienced, not just what the backend reported). Grouped in
+    // that same request-flow order so the layout reads top-to-bottom the
+    // way a request actually travels.
+
+    // CloudFront's metrics live only in us-east-1 regardless of which
+    // region the distribution actually serves from or which region this
+    // stack deploys to — a plain AWS fact, not a CDK quirk. Every
+    // CloudFront Metric below sets region explicitly for that reason.
+    const cloudFrontMetric = (metricName: string, statistic: string) =>
+      new cloudwatch.Metric({
+        namespace: 'AWS/CloudFront',
+        metricName,
+        dimensionsMap: {
+          DistributionId: distribution.distributionId,
+          Region: 'Global',
+        },
+        statistic,
+        region: 'us-east-1',
+        period: cdk.Duration.minutes(5),
+      });
+
+    // RUM's own L2 construct (CfnAppMonitor) has no metric*() helpers, so
+    // these are built directly against the AWS/RUM namespace using the
+    // real metric names/dimensions this app monitor actually publishes
+    // (confirmed live via `aws cloudwatch list-metrics --namespace AWS/RUM`
+    // against the deployed app monitor before writing this).
+    const rumMetric = (metricName: string, statistic: string = 'Sum') =>
+      new cloudwatch.Metric({
+        namespace: 'AWS/RUM',
+        metricName,
+        dimensionsMap: { application_name: rumAppMonitor.name! },
+        statistic,
+        period: cdk.Duration.minutes(5),
+      });
+
+    const dashboard = new cloudwatch.Dashboard(this, 'ProjectDashboard', {
+      dashboardName: 'AstrologyConjunctionFinder',
+      defaultInterval: cdk.Duration.hours(3),
+    });
+
+    dashboard.addWidgets(
+      new cloudwatch.TextWidget({
+        markdown:
+          '# Astrology Conjunction Finder\n' +
+          `Live: ${siteUrl} — request flow top to bottom: CloudFront → (S3 static | API Gateway → Lambda). RUM is what real browsers experienced, independent of backend-reported numbers.`,
+        width: 24,
+        height: 2,
+      }),
+    );
+
+    // ── CloudFront (first hop for every request, static or API) ─────────
+    dashboard.addWidgets(
+      new cloudwatch.TextWidget({ markdown: '## CloudFront', width: 24, height: 1 }),
+    );
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Requests',
+        left: [cloudFrontMetric('Requests', 'Sum')],
+        width: 8,
+        height: 6,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Error rate (%)',
+        left: [
+          cloudFrontMetric('4xxErrorRate', 'Average'),
+          cloudFrontMetric('5xxErrorRate', 'Average'),
+        ],
+        width: 8,
+        height: 6,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Bytes downloaded',
+        left: [cloudFrontMetric('BytesDownloaded', 'Sum')],
+        width: 8,
+        height: 6,
+      }),
+    );
+
+    // ── API Gateway (the /api/* entry point behind CloudFront) ──────────
+    dashboard.addWidgets(
+      new cloudwatch.TextWidget({ markdown: '## API Gateway (HTTP API)', width: 24, height: 1 }),
+    );
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Request count',
+        left: [httpApi.metricCount({ statistic: 'Sum' })],
+        width: 8,
+        height: 6,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Client/server errors',
+        left: [
+          httpApi.metricClientError({ statistic: 'Sum' }),
+          httpApi.metricServerError({ statistic: 'Sum' }),
+        ],
+        width: 8,
+        height: 6,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Latency (ms): total vs. Lambda integration',
+        left: [
+          httpApi.metricLatency({ statistic: 'p99' }),
+          httpApi.metricIntegrationLatency({ statistic: 'p99' }),
+        ],
+        width: 8,
+        height: 6,
+      }),
+    );
+
+    // ── Lambda (the actual compute: FastAPI + pyswisseph) ────────────────
+    dashboard.addWidgets(
+      new cloudwatch.TextWidget({ markdown: '## Lambda (backend compute)', width: 24, height: 1 }),
+    );
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Invocations vs. errors',
+        left: [backendFn.metricInvocations({ statistic: 'Sum' })],
+        right: [backendFn.metricErrors({ statistic: 'Sum' })],
+        width: 8,
+        height: 6,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Duration (ms): p50 / p99 / max',
+        left: [
+          backendFn.metricDuration({ statistic: 'p50' }),
+          backendFn.metricDuration({ statistic: 'p99' }),
+          backendFn.metricDuration({ statistic: 'Maximum' }),
+        ],
+        // The function's own 30s hard timeout as a visual ceiling — any
+        // duration bar approaching this line is a request about to be
+        // killed by Lambda, not just "a bit slow".
+        leftAnnotations: [
+          {
+            value: 30000,
+            label: 'Lambda timeout (30s)',
+            color: cloudwatch.Color.RED,
+          },
+        ],
+        width: 8,
+        height: 6,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Throttles',
+        left: [backendFn.metricThrottles({ statistic: 'Sum' })],
+        width: 8,
+        height: 6,
+      }),
+    );
+
+    // ── S3 (frontend static asset origin behind CloudFront's default path) ─
+    dashboard.addWidgets(
+      new cloudwatch.TextWidget({ markdown: '## S3 (frontend bucket)', width: 24, height: 1 }),
+    );
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Bucket size (bytes)',
+        left: [
+          new cloudwatch.Metric({
+            namespace: 'AWS/S3',
+            metricName: 'BucketSizeBytes',
+            dimensionsMap: {
+              BucketName: siteBucket.bucketName,
+              StorageType: 'StandardStorage',
+            },
+            statistic: 'Average',
+            // S3 storage metrics are only published once/day — a shorter
+            // period just shows empty gaps between real datapoints.
+            period: cdk.Duration.days(1),
+          }),
+        ],
+        width: 12,
+        height: 6,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Object count',
+        left: [
+          new cloudwatch.Metric({
+            namespace: 'AWS/S3',
+            metricName: 'NumberOfObjects',
+            dimensionsMap: {
+              BucketName: siteBucket.bucketName,
+              StorageType: 'AllStorageTypes',
+            },
+            statistic: 'Average',
+            period: cdk.Duration.days(1),
+          }),
+        ],
+        width: 12,
+        height: 6,
+      }),
+    );
+
+    // ── CloudWatch RUM (real browsers, independent of backend reporting) ──
+    dashboard.addWidgets(
+      new cloudwatch.TextWidget({
+        markdown: '## Real User Monitoring — what browsers actually experienced',
+        width: 24,
+        height: 1,
+      }),
+    );
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Sessions & page views',
+        left: [rumMetric('SessionCount'), rumMetric('PageViewCount')],
+        width: 8,
+        height: 6,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Client-observed errors',
+        left: [
+          rumMetric('JsErrorCount'),
+          rumMetric('Http4xxCount'),
+          rumMetric('Http5xxCount'),
+        ],
+        width: 8,
+        height: 6,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Page load performance (ms)',
+        left: [
+          rumMetric('WebVitalsTimeToFirstByte', 'Average'),
+          rumMetric('WebVitalsLargestContentfulPaint', 'Average'),
+          rumMetric('PerformanceNavigationDuration', 'Average'),
+        ],
+        width: 8,
+        height: 6,
+      }),
+    );
+
+    new cdk.CfnOutput(this, 'DashboardUrl', {
+      value: `https://${this.region}.console.aws.amazon.com/cloudwatch/home?region=${this.region}#dashboards:name=${dashboard.dashboardName}`,
+      description: 'Direct link to the CloudWatch dashboard for this project',
     });
   }
 }
