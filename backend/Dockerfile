@@ -1,4 +1,11 @@
-FROM public.ecr.aws/lambda/python:3.11
+FROM public.ecr.aws/lambda/python:3.14
+
+# pyswisseph and cffi (a timezonefinder dependency) publish no prebuilt
+# wheel for this Python version, so pip must build them from source here.
+# The base image's Amazon Linux 2023 layer doesn't include a C toolchain by
+# default (it does for older Python-version base images that still had
+# prebuilt wheels available, which is why this step wasn't needed before).
+RUN dnf install -y gcc gcc-c++ make libffi-devel && dnf clean all
 
 COPY requirements.txt ${LAMBDA_TASK_ROOT}/requirements.txt
 RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt

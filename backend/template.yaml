@@ -21,7 +21,7 @@ Parameters:
 
 Globals:
   Function:
-    Runtime: python3.11
+    Runtime: python3.14
     MemorySize: 1024
     # Cold start loads the .se1 ephemeris files and the timezonefinder dataset;
     # a 12-month two-body search itself runs in well under a second.
@@ -61,7 +61,7 @@ Resources:
             Path: /{proxy+}
             Method: ANY
     Metadata:
-      BuildMethod: python3.11
+      BuildMethod: python3.14
 
   ConjunctionFunctionLogGroup:
     Type: AWS::Logs::LogGroup
